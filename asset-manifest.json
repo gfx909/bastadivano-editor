@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/gfx909/bastadivano-editor/static/css/main.81dc7566.css",
+    "main.js": "/gfx909/bastadivano-editor/static/js/main.43342d6c.js",
+    "index.html": "/gfx909/bastadivano-editor/index.html",
+    "main.81dc7566.css.map": "/gfx909/bastadivano-editor/static/css/main.81dc7566.css.map",
+    "main.43342d6c.js.map": "/gfx909/bastadivano-editor/static/js/main.43342d6c.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.81dc7566.css",
+    "static/js/main.43342d6c.js"
+  ]
+}
