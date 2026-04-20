@@ -14,6 +14,7 @@ export default function SchedeEditor() {
   const [bloccoAperto, setBloccoAperto] = useState(null); // id blocco espanso
   const [toDelete, setToDelete]       = useState(null);
   const [libreriaEsercizi, setLibreriaEsercizi] = useState(null);
+  const [libreriaTipologie, setLibreriaTipologie] = useState([]);
 
   const mark = () => setModified(true);
 
@@ -45,6 +46,7 @@ export default function SchedeEditor() {
     const result = await openJsonFile('Libreria esercizi JSON');
     if (!result || !result.data.esercizi) return;
     setLibreriaEsercizi(result.data.esercizi);
+    setLibreriaTipologie(result.data.tipologie || []);
     toastOk(`Libreria caricata: ${result.data.esercizi.length} esercizi`);
   };
 
@@ -302,6 +304,7 @@ export default function SchedeEditor() {
               total={scheda.blocchi.length}
               aperto={bloccoAperto === b.id}
               libreriaEsercizi={libreriaEsercizi}
+              libreriaTipologie={libreriaTipologie}
               onToggle={() => setBloccoAperto(prev => prev === b.id ? null : b.id)}
               onUpdate={(field, val) => updateBlocco(b.id, field, val)}
               onDelete={() => deleteBlocco(b.id)}
@@ -320,31 +323,35 @@ export default function SchedeEditor() {
 }
 
 // ── Selettore esercizi dalla libreria ────────────────────
-function EsercizioPickerModal({ libreria, onPick, onClose }) {
-  const [cerca, setCerca]       = React.useState('');
+function EsercizioPickerModal({ libreria, tipologie, onPick, onClose }) {
+  const [cerca, setCerca]         = React.useState('');
   const [filtroTip, setFiltroTip] = React.useState('');
 
-  const tipologie = libreria
-    ? [...new Map(libreria.map(e => {
-        const ids = (e.categorie_ids || e.tipologia_id || '').split(',').filter(Boolean);
-        return ids.map(id => [id, { id, nome: id }]);
-      }).flat()).values()]
-    : [];
+  // Se non abbiamo tipologie dalla libreria, le ricaviamo dagli esercizi
+  const tips = React.useMemo(() => {
+    if (tipologie && tipologie.length > 0) return tipologie;
+    // Fallback: costruisce tipologie minimali dagli UUID
+    const map = new Map();
+    (libreria || []).forEach(e => {
+      const ids = (e.categorie_ids || e.tipologia_id || '').split(',').filter(Boolean);
+      ids.forEach(id => { if (!map.has(id)) map.set(id, { id, nome: id, emoji: '💪' }); });
+    });
+    return [...map.values()];
+  }, [tipologie, libreria]);
 
-  // Costruisce mappa id→nome dalle tipologie presenti nei dati
-  // (senza avere accesso alla libreria tipologie vera)
   const results = React.useMemo(() => {
     if (!libreria) return [];
     const q = cerca.toLowerCase().trim();
     return libreria.filter(e => {
-      const inCat = !filtroTip || (e.categorie_ids || e.tipologia_id || '').includes(filtroTip);
+      const catStr = e.categorie_ids || e.tipologia_id || '';
+      const inCat = !filtroTip || catStr.split(',').map(s => s.trim()).includes(filtroTip);
       if (!inCat) return false;
       if (!q) return true;
       const tokens = q.split(/\s+/);
       const hay = [e.nome, e.nome_ufficiale_it, e.nome_ufficiale_en,
         e.muscoli, e.strumentazione].join(' ').toLowerCase();
       return tokens.every(t => hay.includes(t));
-    }).slice(0, 80);
+    }).slice(0, 100);
   }, [libreria, cerca, filtroTip]);
 
   React.useEffect(() => {
@@ -355,29 +362,72 @@ function EsercizioPickerModal({ libreria, onPick, onClose }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 640, height: '80vh' }}
+      <div className="modal" style={{ maxWidth: 660, height: '85vh' }}
         onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
         <div className="modal-header">
           <span className="modal-title">📚 Scegli esercizio dalla libreria</span>
           <button className="btn-icon" onClick={onClose}>✕</button>
         </div>
 
-        {/* Barra ricerca */}
-        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)',
-          display: 'flex', gap: 8 }}>
-          <div className="search-wrap" style={{ flex: 1 }}>
+        {/* Ricerca + filtro */}
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)',
+          display: 'flex', flexDirection: 'column', gap: 8 }}>
+
+          {/* Barra ricerca */}
+          <div className="search-wrap">
             <span className="search-icon">🔍</span>
             <input className="search-input" autoFocus
               placeholder="Cerca nome, muscolo, attrezzo... (es: panca bilanciere)"
               value={cerca} onChange={e => setCerca(e.target.value)} />
           </div>
+
+          {/* Chip filtro tipologia */}
+          {tips.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+              {/* Chip "Tutte" */}
+              <button
+                onClick={() => setFiltroTip('')}
+                style={{
+                  padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                  cursor: 'pointer', border: '1px solid',
+                  background: filtroTip === '' ? 'var(--accent)' : 'transparent',
+                  borderColor: filtroTip === '' ? 'var(--accent)' : 'var(--border)',
+                  color: filtroTip === '' ? 'white' : 'var(--text-secondary)',
+                  transition: 'all 0.12s ease',
+                }}>
+                Tutte
+              </button>
+
+              {tips.map(t => {
+                const sel = filtroTip === t.id;
+                return (
+                  <button key={t.id}
+                    onClick={() => setFiltroTip(sel ? '' : t.id)}
+                    style={{
+                      padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                      cursor: 'pointer', border: '1px solid',
+                      background: sel ? 'var(--accent)' : 'var(--bg-card)',
+                      borderColor: sel ? 'var(--accent)' : 'var(--border)',
+                      color: sel ? 'white' : 'var(--text-secondary)',
+                      transition: 'all 0.12s ease',
+                    }}>
+                    {t.emoji && t.emoji !== t.id ? `${t.emoji} ` : ''}{t.nome}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Lista risultati */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {results.length === 0 ? (
             <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-              {cerca ? `Nessun risultato per "${cerca}"` : 'Carica la libreria per cercare gli esercizi'}
+              {cerca || filtroTip
+                ? `Nessun risultato${filtroTip ? ' per questa categoria' : ''}${cerca ? ` con "${cerca}"` : ''}`
+                : 'Carica la libreria per cercare gli esercizi'}
             </div>
           ) : (
             results.map(e => (
@@ -386,11 +436,11 @@ function EsercizioPickerModal({ libreria, onPick, onClose }) {
           )}
         </div>
 
-        {/* Footer info */}
+        {/* Footer */}
         <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)',
           fontSize: 11, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
-          <span>{results.length} risultati</span>
-          <span>Premi ESC per chiudere</span>
+          <span>{results.length} risultati{filtroTip ? ` in "${tips.find(t=>t.id===filtroTip)?.nome || filtroTip}"` : ''}</span>
+          <span>ESC per chiudere</span>
         </div>
       </div>
     </div>
@@ -456,7 +506,7 @@ function PickerRow({ esercizio: e, onPick }) {
 }
 
 // ── Blocco Card ───────────────────────────────────────────
-function BloccoCard({ blocco, index, total, aperto, libreriaEsercizi,
+function BloccoCard({ blocco, index, total, aperto, libreriaEsercizi, libreriaTipologie,
   onToggle, onUpdate, onDelete, onMoveUp, onMoveDown,
   onAddEs, onUpdateEs, onDeleteEs, onMoveEs }) {
 
@@ -549,6 +599,7 @@ function BloccoCard({ blocco, index, total, aperto, libreriaEsercizi,
               index={ci}
               total={(blocco.esercizi_config || []).length}
               libreriaEsercizi={libreriaEsercizi}
+              libreriaTipologie={libreriaTipologie}
               onUpdate={(field, val) => onUpdateEs(cfg.id, field, val)}
               onDelete={() => onDeleteEs(cfg.id)}
               onMoveUp={() => onMoveEs(cfg.id, -1)}
@@ -573,7 +624,7 @@ function BloccoCard({ blocco, index, total, aperto, libreriaEsercizi,
 }
 
 // ── Riga esercizio nel blocco ─────────────────────────────
-function EsercizioRow({ cfg, index, total, libreriaEsercizi, onUpdate, onDelete, onMoveUp, onMoveDown }) {
+function EsercizioRow({ cfg, index, total, libreriaEsercizi, libreriaTipologie, onUpdate, onDelete, onMoveUp, onMoveDown }) {
   const [showSuggest, setShowSuggest] = useState(false);
   const [showPicker, setShowPicker]   = useState(false);
 
@@ -752,6 +803,7 @@ function EsercizioRow({ cfg, index, total, libreriaEsercizi, onUpdate, onDelete,
       {showPicker && libreriaEsercizi && (
         <EsercizioPickerModal
           libreria={libreriaEsercizi}
+          tipologie={libreriaTipologie}
           onPick={handlePick}
           onClose={() => setShowPicker(false)}
         />
