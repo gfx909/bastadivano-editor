@@ -323,7 +323,7 @@ export default function SchedeEditor() {
 }
 
 // ── Selettore esercizi dalla libreria ────────────────────
-function EsercizioPickerModal({ libreria, tipologie, onPick, onClose }) {
+function EsercizioPickerModal({ libreria, tipologie, onPick, onClose, titolo, escludi = [] }) {
   const [cerca, setCerca]         = React.useState('');
   const [filtroTip, setFiltroTip] = React.useState('');
 
@@ -342,7 +342,7 @@ function EsercizioPickerModal({ libreria, tipologie, onPick, onClose }) {
   const results = React.useMemo(() => {
     if (!libreria) return [];
     const q = cerca.toLowerCase().trim();
-    return libreria.filter(e => {
+    return libreria.filter(e => !escludi.includes(e.id)).filter(e => {
       const catStr = e.categorie_ids || e.tipologia_id || '';
       const inCat = !filtroTip || catStr.split(',').map(s => s.trim()).includes(filtroTip);
       if (!inCat) return false;
@@ -367,7 +367,7 @@ function EsercizioPickerModal({ libreria, tipologie, onPick, onClose }) {
 
         {/* Header */}
         <div className="modal-header">
-          <span className="modal-title">📚 Scegli esercizio dalla libreria</span>
+          <span className="modal-title">📚 {titolo || 'Scegli esercizio dalla libreria'}</span>
           <button className="btn-icon" onClick={onClose}>✕</button>
         </div>
 
@@ -584,9 +584,7 @@ function BloccoCard({ blocco, index, total, aperto, libreriaEsercizi, libreriaTi
             <span style={{ flex: 3, fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
               letterSpacing: '0.6px', textTransform: 'uppercase' }}>Esercizio</span>
             <span style={{ minWidth: 64, fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
-              letterSpacing: '0.6px', textTransform: 'uppercase', textAlign: 'center' }}>Serie</span>
-            <span style={{ flex: 2, fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
-              letterSpacing: '0.6px', textTransform: 'uppercase' }}>Ripetizioni</span>
+              letterSpacing: '0.6px', textTransform: 'uppercase', textAlign: 'center' }}>N.Serie</span>
             <span style={{ minWidth: 72, fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
               letterSpacing: '0.6px', textTransform: 'uppercase', textAlign: 'center' }}>Riposo(s)</span>
             <span style={{ minWidth: 92 }} />
@@ -627,8 +625,8 @@ function BloccoCard({ blocco, index, total, aperto, libreriaEsercizi, libreriaTi
 function EsercizioRow({ cfg, index, total, libreriaEsercizi, libreriaTipologie, onUpdate, onDelete, onMoveUp, onMoveDown }) {
   const [showSuggest, setShowSuggest] = useState(false);
   const [showPicker, setShowPicker]   = useState(false);
+  const [showAltPicker, setShowAltPicker] = useState(false);
 
-  // Ricerca fuzzy multi-token nel dropdown inline
   const query = (cfg.esercizio_nome || '').toLowerCase().trim();
   const suggest = React.useMemo(() => {
     if (!libreriaEsercizi || !query) return [];
@@ -640,20 +638,6 @@ function EsercizioRow({ cfg, index, total, libreriaEsercizi, libreriaTipologie, 
     }).slice(0, 10);
   }, [libreriaEsercizi, query]);
 
-  const ripsStr = Array.isArray(cfg.ripetute_serie)
-    ? cfg.ripetute_serie.join(',')
-    : cfg.ripetute_serie || '';
-
-  const handleRips = (val) => {
-    const arr = val.split(',').map(s => {
-      const n = parseInt(s.trim(), 10);
-      return isNaN(n) ? s.trim() : n;
-    });
-    onUpdate('ripetute_serie', arr);
-    onUpdate('numero_serie', arr.length);
-    onUpdate('cedimento_serie', Array(arr.length).fill(false));
-  };
-
   const handlePick = (esercizio) => {
     onUpdate('esercizio_nome', esercizio.nome);
     onUpdate('esercizio_id', esercizio.id);
@@ -661,7 +645,32 @@ function EsercizioRow({ cfg, index, total, libreriaEsercizi, libreriaTipologie, 
     setShowSuggest(false);
   };
 
-  // Thumbnail piccola se esercizio matchato
+  // Gestione alternativi: array di { id, nome }
+  const altIds = React.useMemo(() => {
+    const raw = cfg.alternative_ids || '';
+    if (!raw) return [];
+    return raw.split(',').map(s => s.trim()).filter(Boolean);
+  }, [cfg.alternative_ids]);
+
+  const altNomi = React.useMemo(() => {
+    if (!libreriaEsercizi) return altIds.map(id => ({ id, nome: id }));
+    return altIds.map(id => {
+      const e = libreriaEsercizi.find(e => e.id === id);
+      return { id, nome: e ? e.nome : id };
+    });
+  }, [altIds, libreriaEsercizi]);
+
+  const handlePickAlt = (esercizio) => {
+    if (altIds.includes(esercizio.id)) return; // già presente
+    const newIds = [...altIds, esercizio.id].join(',');
+    onUpdate('alternative_ids', newIds);
+    setShowAltPicker(false);
+  };
+
+  const removeAlt = (id) => {
+    onUpdate('alternative_ids', altIds.filter(a => a !== id).join(','));
+  };
+
   const matched = libreriaEsercizi?.find(e =>
     e.nome.toLowerCase() === (cfg.esercizio_nome || '').toLowerCase());
   const thumbUrl = matched?._id_originale
@@ -670,73 +679,54 @@ function EsercizioRow({ cfg, index, total, libreriaEsercizi, libreriaTipologie, 
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0',
-        borderBottom: '1px solid var(--border)25' }}>
+      {/* ── Riga principale esercizio ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0 3px',
+        borderBottom: altNomi.length === 0 ? '1px solid var(--border)25' : 'none' }}>
 
         {/* Numero */}
         <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)',
-          minWidth: 26, textAlign: 'right' }}>
-          {index + 1}.
-        </span>
+          minWidth: 26, textAlign: 'right' }}>{index + 1}.</span>
 
         {/* Nome + autocomplete + pulsante libreria */}
-        <div style={{ position: 'relative', flex: 3, display: 'flex', gap: 4 }}>
-          {/* Thumbnail se esercizio trovato */}
+        <div style={{ position: 'relative', flex: 1, display: 'flex', gap: 4 }}>
           {thumbUrl && (
             <img src={thumbUrl} alt="" loading="lazy"
               style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover',
                 flexShrink: 0, border: '1px solid var(--border)' }}
-              onError={e => e.target.style.display = 'none'}
-            />
+              onError={e => e.target.style.display = 'none'} />
           )}
-
           <div style={{ position: 'relative', flex: 1 }}>
-            <input
-              className="input"
-              value={cfg.esercizio_nome || ''}
+            <input className="input" value={cfg.esercizio_nome || ''}
               onChange={e => { onUpdate('esercizio_nome', e.target.value); setShowSuggest(true); }}
               onBlur={() => setTimeout(() => setShowSuggest(false), 200)}
               onFocus={() => setShowSuggest(true)}
               placeholder="Scrivi o cerca dalla libreria →"
-              style={{ fontSize: 12, paddingRight: 28 }}
-            />
-            {/* Indicatore libreria caricata */}
+              style={{ fontSize: 12, paddingRight: 28 }} />
             {libreriaEsercizi && (
               <span style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)',
                 fontSize: 10, color: 'var(--accent-light)', pointerEvents: 'none' }}>⌄</span>
             )}
-
-            {/* Dropdown suggerimenti */}
             {showSuggest && suggest.length > 0 && (
               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
                 background: 'var(--bg-panel)', border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-sm)', maxHeight: 220, overflowY: 'auto',
                 boxShadow: 'var(--shadow-md)', marginTop: 2 }}>
                 {suggest.map(e => (
-                  <div key={e.id}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '7px 10px', cursor: 'pointer' }}
+                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '7px 10px', cursor: 'pointer' }}
                     onMouseDown={() => handlePick(e)}
                     onMouseEnter={ev => ev.currentTarget.style.background = 'var(--bg-hover)'}
-                    onMouseLeave={ev => ev.currentTarget.style.background = 'transparent'}
-                  >
+                    onMouseLeave={ev => ev.currentTarget.style.background = 'transparent'}>
                     {e._id_originale && (
                       <img src={`https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/${e._id_originale}/0.jpg`}
-                        alt="" loading="lazy"
-                        style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover',
-                          flexShrink: 0 }}
-                        onError={ev => ev.target.style.display = 'none'}
-                      />
+                        alt="" loading="lazy" onError={ev => ev.target.style.display='none'}
+                        style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />
                     )}
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {e.nome}
-                      </div>
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.nome}</div>
                       {e.strumentazione && (
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                          {e.strumentazione}
-                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{e.strumentazione}</div>
                       )}
                     </div>
                   </div>
@@ -744,38 +734,32 @@ function EsercizioRow({ cfg, index, total, libreriaEsercizi, libreriaTipologie, 
               </div>
             )}
           </div>
-
-          {/* Pulsante apri picker completo */}
-          <button className="btn-icon"
-            onClick={() => setShowPicker(true)}
-            title={libreriaEsercizi ? 'Sfoglia libreria' : 'Carica prima la libreria dalla toolbar'}
+          <button className="btn-icon" onClick={() => setShowPicker(true)}
+            title={libreriaEsercizi ? 'Sfoglia libreria' : 'Carica prima la libreria'}
             disabled={!libreriaEsercizi}
             style={{ fontSize: 14, padding: '4px 7px',
               color: libreriaEsercizi ? 'var(--accent-light)' : 'var(--text-muted)',
-              borderColor: libreriaEsercizi ? 'var(--accent)40' : 'var(--border)' }}>
-            📚
-          </button>
+              borderColor: libreriaEsercizi ? 'var(--accent)40' : 'var(--border)' }}>📚</button>
         </div>
 
         {/* N. serie */}
         <div style={{ minWidth: 64 }}>
           <input className="input" type="number" min={1} max={20}
             value={cfg.numero_serie || 3}
-            onChange={e => onUpdate('numero_serie', +e.target.value)}
-            title="N. serie"
-            style={{ fontSize: 12, textAlign: 'center' }}
-          />
-        </div>
-
-        {/* Ripetizioni */}
-        <div style={{ flex: 2 }}>
-          <input className="input"
-            value={ripsStr}
-            onChange={e => handleRips(e.target.value)}
-            placeholder="10,10,8"
-            title="Ripetizioni per serie (virgola tra le serie)"
-            style={{ fontSize: 12 }}
-          />
+            onChange={e => {
+              const n = +e.target.value;
+              onUpdate('numero_serie', n);
+              const rips = Array.isArray(cfg.ripetute_serie) ? [...cfg.ripetute_serie] : [10,10,10];
+              const ced  = Array.isArray(cfg.cedimento_serie) ? [...cfg.cedimento_serie] : [];
+              const iso  = Array.isArray(cfg.ipertrofia_secondi) ? [...cfg.ipertrofia_secondi] : [];
+              while (rips.length < n) rips.push(rips[rips.length-1] || 10);
+              while (ced.length  < n) ced.push(false);
+              while (iso.length  < n) iso.push(null);
+              onUpdate('ripetute_serie',   rips.slice(0, n));
+              onUpdate('cedimento_serie',  ced.slice(0, n));
+              onUpdate('ipertrofia_secondi', iso.slice(0, n));
+            }}
+            title="N. serie" style={{ fontSize: 12, textAlign: 'center' }} />
         </div>
 
         {/* Riposo */}
@@ -783,32 +767,225 @@ function EsercizioRow({ cfg, index, total, libreriaEsercizi, libreriaTipologie, 
           <input className="input" type="number" min={0} max={600} step={15}
             value={cfg.secondi_riposo || 90}
             onChange={e => onUpdate('secondi_riposo', +e.target.value)}
-            title="Secondi di riposo"
-            style={{ fontSize: 12, textAlign: 'center' }}
-          />
+            title="Secondi di riposo" style={{ fontSize: 12, textAlign: 'center' }} />
         </div>
 
         {/* Controlli */}
         <div style={{ display: 'flex', gap: 2, minWidth: 92 }}>
-          <button className="btn-icon" onClick={onMoveUp} disabled={index === 0}
-            title="Su" style={{ fontSize: 11 }}>↑</button>
-          <button className="btn-icon" onClick={onMoveDown} disabled={index === total - 1}
-            title="Giù" style={{ fontSize: 11 }}>↓</button>
-          <button className="btn-icon" onClick={onDelete}
-            title="Rimuovi" style={{ color: 'var(--red)', fontSize: 11 }}>✕</button>
+          <button className="btn-icon" onClick={onMoveUp} disabled={index === 0} title="Su" style={{ fontSize: 11 }}>↑</button>
+          <button className="btn-icon" onClick={onMoveDown} disabled={index === total - 1} title="Giù" style={{ fontSize: 11 }}>↓</button>
+          <button className="btn-icon" onClick={onDelete} title="Rimuovi" style={{ color: 'var(--red)', fontSize: 11 }}>✕</button>
         </div>
       </div>
 
-      {/* Picker modale completo */}
+      {/* ── Alternativi ── */}
+      <div style={{ marginLeft: 34, marginBottom: 4, display: 'flex', flexWrap: 'wrap',
+        gap: 5, alignItems: 'center',
+        borderBottom: '1px solid var(--border)25', paddingBottom: 6 }}>
+        {altNomi.map(alt => {
+          const altE = libreriaEsercizi?.find(e => e.id === alt.id);
+          const altThumb = altE?._id_originale
+            ? `https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/${altE._id_originale}/0.jpg`
+            : null;
+          return (
+            <div key={alt.id} style={{ display: 'flex', alignItems: 'center', gap: 4,
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: 20, padding: '2px 6px 2px 4px', fontSize: 11 }}>
+              {altThumb && (
+                <img src={altThumb} alt="" loading="lazy"
+                  style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover' }}
+                  onError={e => e.target.style.display='none'} />
+              )}
+              <span style={{ color: 'var(--text-secondary)' }}>⇄ {alt.nome}</span>
+              <button onClick={() => removeAlt(alt.id)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer',
+                  color: 'var(--text-muted)', fontSize: 11, padding: '0 2px', lineHeight: 1 }}>✕</button>
+            </div>
+          );
+        })}
+        <button onClick={() => setShowAltPicker(true)}
+          disabled={!libreriaEsercizi}
+          title={libreriaEsercizi ? 'Aggiungi alternativo' : 'Carica prima la libreria'}
+          style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, cursor: 'pointer',
+            background: 'transparent', border: '1px dashed var(--border)',
+            color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3 }}>
+          ＋ alternativo
+        </button>
+      </div>
+
+      {/* ── Dettaglio serie ── */}
+      <SerieEditor cfg={cfg} onUpdate={onUpdate} />
+
+      {/* Pickers */}
       {showPicker && libreriaEsercizi && (
-        <EsercizioPickerModal
-          libreria={libreriaEsercizi}
-          tipologie={libreriaTipologie}
-          onPick={handlePick}
-          onClose={() => setShowPicker(false)}
-        />
+        <EsercizioPickerModal libreria={libreriaEsercizi} tipologie={libreriaTipologie}
+          onPick={handlePick} onClose={() => setShowPicker(false)} />
+      )}
+      {showAltPicker && libreriaEsercizi && (
+        <EsercizioPickerModal libreria={libreriaEsercizi} tipologie={libreriaTipologie}
+          titolo="Scegli esercizio alternativo"
+          escludi={[cfg.esercizio_id, ...altIds].filter(Boolean)}
+          onPick={handlePickAlt} onClose={() => setShowAltPicker(false)} />
       )}
     </>
   );
 }
 
+// ── Editor per-serie: rip + cedimento + isometria ─────────
+function SerieEditor({ cfg, onUpdate }) {
+  const n    = cfg.numero_serie || 3;
+  const rips = Array.isArray(cfg.ripetute_serie)    ? cfg.ripetute_serie    : Array(n).fill(10);
+  const ced  = Array.isArray(cfg.cedimento_serie)   ? cfg.cedimento_serie   : Array(n).fill(false);
+  const iso  = Array.isArray(cfg.ipertrofia_secondi)? cfg.ipertrofia_secondi: Array(n).fill(null);
+
+  const setRip = (i, val) => {
+    const arr = [...rips]; arr[i] = val === '' ? '' : (parseInt(val, 10) || val);
+    onUpdate('ripetute_serie', arr);
+  };
+  const setCed = (i, val) => {
+    const arr = [...ced]; arr[i] = val;
+    onUpdate('cedimento_serie', arr);
+  };
+  const setIso = (i, val) => {
+    const arr = [...iso]; arr[i] = val === '' ? null : (parseInt(val, 10) || null);
+    onUpdate('ipertrofia_secondi', arr);
+  };
+
+  // Controlla se almeno una serie ha cedimento o isometria → mostra sempre espanso
+  const hasCed = ced.some(Boolean);
+  const hasIso = iso.some(v => v !== null && v !== '');
+  const [expanded, setExpanded] = React.useState(hasCed || hasIso);
+
+  return (
+    <div style={{ marginLeft: 34, marginBottom: 6 }}>
+      {/* Header compatto con anteprima rip + toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: expanded ? 6 : 0 }}>
+        {/* Anteprima ripetizioni compatta quando non espanso */}
+        {!expanded && (
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {Array.from({ length: n }, (_, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <input
+                  type="text" inputMode="numeric"
+                  value={rips[i] ?? 10}
+                  onChange={e => setRip(i, e.target.value)}
+                  style={{ width: 36, padding: '3px 4px', textAlign: 'center', fontSize: 11,
+                    background: 'var(--bg-input)', border: '1px solid var(--border)',
+                    borderRadius: 4, color: 'var(--text-primary)' }}
+                  title={`Ripetizioni serie ${i+1}`}
+                />
+                {i < n - 1 && <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>,</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          onClick={() => setExpanded(v => !v)}
+          style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, cursor: 'pointer',
+            background: (hasCed || hasIso) ? 'var(--accent)20' : 'transparent',
+            border: `1px solid ${(hasCed || hasIso) ? 'var(--accent)50' : 'var(--border)'}`,
+            color: (hasCed || hasIso) ? 'var(--accent-light)' : 'var(--text-muted)',
+            display: 'flex', alignItems: 'center', gap: 4 }}
+          title="Modifica ripetizioni, cedimento e isometria per ogni serie">
+          {expanded ? '▲' : '▼'}
+          {expanded ? ' Comprimi' : ' Dettaglio serie'}
+          {(hasCed || hasIso) && <span style={{ fontSize: 9 }}>●</span>}
+        </button>
+      </div>
+
+      {/* Griglia dettaglio serie */}
+      {expanded && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: 8, overflow: 'hidden' }}>
+          {/* Intestazione */}
+          <div style={{ display: 'grid',
+            gridTemplateColumns: '28px 1fr 1fr 1fr',
+            gap: 0, background: 'var(--bg-panel)',
+            borderBottom: '1px solid var(--border)' }}>
+            {['#', 'Ripetizioni', 'Cedimento', 'Isometria (sec)'].map((h, i) => (
+              <div key={h} style={{ padding: '5px 8px', fontSize: 9, fontWeight: 700,
+                color: 'var(--text-muted)', letterSpacing: '0.5px', textTransform: 'uppercase',
+                borderRight: i < 3 ? '1px solid var(--border)30' : 'none',
+                textAlign: i === 0 ? 'center' : 'left' }}>
+                {h}
+              </div>
+            ))}
+          </div>
+
+          {/* Righe serie */}
+          {Array.from({ length: n }, (_, i) => (
+            <div key={i} style={{ display: 'grid',
+              gridTemplateColumns: '28px 1fr 1fr 1fr',
+              borderBottom: i < n - 1 ? '1px solid var(--border)20' : 'none',
+              background: i % 2 === 0 ? 'transparent' : 'var(--bg-base)10' }}>
+
+              {/* N. serie */}
+              <div style={{ padding: '6px 4px', textAlign: 'center', fontSize: 11,
+                fontFamily: 'var(--font-mono)', color: 'var(--text-muted)',
+                borderRight: '1px solid var(--border)30', display: 'flex',
+                alignItems: 'center', justifyContent: 'center' }}>
+                {i + 1}
+              </div>
+
+              {/* Ripetizioni */}
+              <div style={{ padding: '5px 8px', borderRight: '1px solid var(--border)30',
+                display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  type="text" inputMode="numeric"
+                  value={rips[i] ?? 10}
+                  onChange={e => setRip(i, e.target.value)}
+                  placeholder="10"
+                  style={{ width: 52, padding: '4px 6px', textAlign: 'center', fontSize: 12,
+                    background: 'var(--bg-input)', border: '1px solid var(--border)',
+                    borderRadius: 4, color: 'var(--text-primary)' }}
+                />
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>rip</span>
+              </div>
+
+              {/* Cedimento */}
+              <div style={{ padding: '5px 8px', borderRight: '1px solid var(--border)30',
+                display: 'flex', alignItems: 'center', gap: 6 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6,
+                  cursor: 'pointer', userSelect: 'none' }}>
+                  <div onClick={() => setCed(i, !ced[i])}
+                    style={{ width: 32, height: 18, borderRadius: 9, cursor: 'pointer',
+                      background: ced[i] ? 'var(--accent)' : 'var(--bg-input)',
+                      border: `1px solid ${ced[i] ? 'var(--accent)' : 'var(--border)'}`,
+                      position: 'relative', transition: 'all 0.15s ease', flexShrink: 0 }}>
+                    <div style={{ position: 'absolute', top: 2, left: ced[i] ? 14 : 2,
+                      width: 12, height: 12, borderRadius: '50%', background: 'white',
+                      transition: 'left 0.15s ease', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+                  </div>
+                  <span style={{ fontSize: 11,
+                    color: ced[i] ? 'var(--accent-light)' : 'var(--text-muted)',
+                    fontWeight: ced[i] ? 600 : 400 }}>
+                    {ced[i] ? '🔥 Sì' : 'No'}
+                  </span>
+                </label>
+              </div>
+
+              {/* Isometria */}
+              <div style={{ padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  type="number" min={0} max={300} step={5}
+                  value={iso[i] ?? ''}
+                  onChange={e => setIso(i, e.target.value)}
+                  placeholder="—"
+                  style={{ width: 52, padding: '4px 6px', textAlign: 'center', fontSize: 12,
+                    background: (iso[i] !== null && iso[i] !== '') ? 'var(--accent)12' : 'var(--bg-input)',
+                    border: `1px solid ${(iso[i] !== null && iso[i] !== '') ? 'var(--accent)60' : 'var(--border)'}`,
+                    borderRadius: 4, color: 'var(--text-primary)' }}
+                />
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>sec</span>
+                {(iso[i] !== null && iso[i] !== '') && (
+                  <span style={{ fontSize: 10, color: 'var(--accent-light)' }}>⏱</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -578,3 +578,49 @@ body {
 .confirm-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Tema chiaro ── */
+[data-tema="light"] {
+  --bg-deep:     #f0f2f8;
+  --bg-base:     #f5f7fc;
+  --bg-panel:    #ffffff;
+  --bg-card:     #eef1f8;
+  --bg-hover:    #e4e8f2;
+  --bg-input:    #ffffff;
+  --border:      #d0d5e8;
+  --border-light:#b8bedd;
+
+  --accent:      #2563eb;
+  --accent-glow: #2563eb40;
+  --accent-light:#1d4ed8;
+  --gold:        #c07a00;
+  --gold-light:  #a86500;
+  --green:       #16a34a;
+  --red:         #dc2626;
+  --orange:      #ea580c;
+
+  --text-primary:   #1a1f36;
+  --text-secondary: #4a5378;
+  --text-muted:     #7a82a8;
+  --text-code:      #1d4ed8;
+}
+
+[data-tema="light"] .sidebar {
+  background: #1e2240;
+}
+[data-tema="light"] .sidebar .brand-name { color: #e8a020; }
+[data-tema="light"] .sidebar .brand-sub  { color: #8890bb; }
+[data-tema="light"] .sidebar .nav-item   { color: #aab0cc; }
+[data-tema="light"] .sidebar .nav-item:hover { background: #2a2f58; color: #fff; }
+[data-tema="light"] .sidebar .nav-item.active { color: #7eb8f5; }
+[data-tema="light"] .sidebar .help-box   { background: #252a50; border-color: #3a3f6e; }
+[data-tema="light"] .sidebar .help-title { color: #e8a020; }
+[data-tema="light"] .sidebar .help-box p { color: #8890bb; }
+[data-tema="light"] .sidebar .help-warn  { color: #f59e0b !important; }
+[data-tema="light"] .sidebar .sidebar-footer { border-top-color: #3a3f6e; }
+[data-tema="light"] .sidebar code { background: #1a1f3a; color: #7eb8f5; }
+
+[data-tema="light"] .modal { background: #ffffff; }
+[data-tema="light"] .toast-success { background: #16a34a; }
+[data-tema="light"] .toast-error   { background: #dc2626; }
+[data-tema="light"] .toast-info    { background: #2563eb; }
